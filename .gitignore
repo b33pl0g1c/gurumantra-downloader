@@ -1,0 +1,10 @@
+# Downloaded videos (too large for GitHub)
+downloads/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+Thumbs.db
+.DS_Store
