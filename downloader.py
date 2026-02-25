@@ -194,7 +194,9 @@ def download_all_videos(ffmpeg_path=None):
         # Build yt-dlp command
         cmd = [
             sys.executable, "-m", "yt_dlp",
-            "--no-warnings",
+            "--quiet",               # Suppress all noise
+            "--progress",            # But still show progress bar
+            "--no-warnings",         # No warning messages
             "-f", fmt,
             "-o", os.path.join(download_dir, "%(title)s [%(id)s].%(ext)s"),
             "--no-overwrites",
@@ -211,33 +213,26 @@ def download_all_videos(ffmpeg_path=None):
             cmd.extend(["--concurrent-fragments", "4"])
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            # Stream output directly to console (shows live progress)
+            result = subprocess.run(cmd, timeout=600)
 
             if result.returncode == 0:
-                print(f"   ✅ Downloaded successfully!")
+                print(f"\n   ✅ Downloaded successfully!")
                 video["downloaded"] = True
                 success_count += 1
             else:
-                stdout = result.stdout.strip()
-                stderr = result.stderr.strip()
-                if "has already been downloaded" in stdout or "has already been recorded" in stdout:
-                    print(f"   ✅ Already downloaded, skipping.")
-                    video["downloaded"] = True
-                    success_count += 1
-                else:
-                    error_msg = stderr[:200] if stderr else stdout[:200]
-                    print(f"   ❌ Failed: {error_msg}")
-                    fail_count += 1
+                print(f"\n   ❌ Failed (exit code {result.returncode})")
+                fail_count += 1
 
         except subprocess.TimeoutExpired:
-            print(f"   ⏰ Timed out after 10 minutes, skipping...")
+            print(f"\n   ⏰ Timed out after 10 minutes, skipping...")
             fail_count += 1
         except FileNotFoundError:
             print("   ❌ yt-dlp not found! Try running: pip install yt-dlp")
             input("\nPress Enter to exit...")
             return
         except Exception as e:
-            print(f"   ❌ Error: {e}")
+            print(f"\n   ❌ Error: {e}")
             fail_count += 1
 
         # Save progress after EVERY video (so you can resume later)
