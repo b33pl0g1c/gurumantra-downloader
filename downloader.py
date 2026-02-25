@@ -9,6 +9,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -18,7 +19,15 @@ VIDEO_LIST_FILE = "video_list.json"   # Contains all 139 video details + YouTube
 DOWNLOAD_DIR = "downloads"
 
 
-def check_requirements():
+def pip_install(package):
+    """Install a Python package using pip."""
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", package],
+        capture_output=True, timeout=120
+    )
+
+
+def check_ytdlp():
     """Check that yt-dlp is installed. If not, install it automatically."""
     print("\n🔍 Checking if yt-dlp is installed...")
     try:
@@ -48,7 +57,63 @@ def check_requirements():
         return False
 
 
-def download_all_videos():
+def check_ffmpeg():
+    """
+    Check if ffmpeg is available.
+    If not, try to install it automatically via pip (imageio-ffmpeg).
+    Returns the path to ffmpeg, or None if unavailable.
+    """
+    print("🔍 Checking if ffmpeg is installed...")
+
+    # Method 1: Check if ffmpeg is already on system PATH
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        print(f"   ✅ ffmpeg found on system: {ffmpeg_path}")
+        return ffmpeg_path
+
+    # Method 2: Check if imageio-ffmpeg is already installed
+    ffmpeg_path = _get_imageio_ffmpeg()
+    if ffmpeg_path:
+        print(f"   ✅ ffmpeg found via imageio-ffmpeg")
+        return ffmpeg_path
+
+    # Method 3: Try to install imageio-ffmpeg (bundles ffmpeg binary)
+    print("   ⚠️  ffmpeg is NOT installed. Installing it now...")
+    print("   (This is needed to combine video + audio into one file)")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "imageio-ffmpeg"],
+            check=True, timeout=180,
+            capture_output=True
+        )
+        ffmpeg_path = _get_imageio_ffmpeg()
+        if ffmpeg_path:
+            print(f"   ✅ ffmpeg installed successfully via imageio-ffmpeg!")
+            return ffmpeg_path
+    except Exception:
+        pass
+
+    # All methods failed
+    print("   ⚠️  Could not install ffmpeg automatically.")
+    print("   📥 Videos will be downloaded at 720p (single file, no merge needed).")
+    print("   💡 For higher quality, install ffmpeg manually:")
+    print("      https://ffmpeg.org/download.html")
+    return None
+
+
+def _get_imageio_ffmpeg():
+    """Try to get ffmpeg path from imageio-ffmpeg package."""
+    try:
+        import imageio_ffmpeg
+        path = imageio_ffmpeg.get_ffmpeg_exe()
+        if path and os.path.exists(path):
+            return path
+    except (ImportError, Exception):
+        pass
+    return None
+
+
+def download_all_videos(ffmpeg_path=None):
     """Download all 139 videos. Skips already-downloaded ones."""
 
     # ── Load the video list ──
@@ -75,6 +140,16 @@ def download_all_videos():
     to_download = [v for v in valid_videos if not v.get("downloaded")]
     no_id = [v for v in videos if not v.get("youtube_id")]
 
+    # ── Determine download quality based on ffmpeg availability ──
+    if ffmpeg_path:
+        quality_mode = "HIGH"
+        # Download best video + best audio separately, then merge into MP4
+        fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+    else:
+        quality_mode = "STANDARD"
+        # Download pre-merged MP4 (up to 720p, but no ffmpeg needed)
+        fmt = "best[ext=mp4]/best"
+
     # ── Show status ──
     print("\n" + "═" * 60)
     print("📊  VIDEO DOWNLOAD STATUS")
@@ -85,6 +160,10 @@ def download_all_videos():
     if no_id:
         print(f"   ⚠️  Missing YouTube ID:   {len(no_id)} (will be skipped)")
     print(f"   📂 Download folder:       {download_dir}")
+    if quality_mode == "HIGH":
+        print(f"   🎬 Quality:               HIGH (best video + audio, merged)")
+    else:
+        print(f"   🎬 Quality:               STANDARD (720p, single file)")
     print("═" * 60)
 
     if not to_download:
@@ -116,15 +195,20 @@ def download_all_videos():
         cmd = [
             sys.executable, "-m", "yt_dlp",
             "--no-warnings",
-            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "--merge-output-format", "mp4",
+            "-f", fmt,
             "-o", os.path.join(download_dir, "%(title)s [%(id)s].%(ext)s"),
             "--no-overwrites",
             "--retries", "3",
             "--fragment-retries", "3",
-            "--concurrent-fragments", "4",
             yt_url,
         ]
+
+        # Add merge options only if ffmpeg is available
+        if ffmpeg_path:
+            cmd.insert(4, "--merge-output-format")
+            cmd.insert(5, "mp4")
+            cmd.extend(["--ffmpeg-location", os.path.dirname(ffmpeg_path)])
+            cmd.extend(["--concurrent-fragments", "4"])
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -185,10 +269,13 @@ if __name__ == "__main__":
     print("║   You can stop and resume anytime — progress is saved!      ║")
     print("╚══════════════════════════════════════════════════════════════╝")
 
-    # Step 1: Check requirements
-    if not check_requirements():
+    # Step 1: Check yt-dlp
+    if not check_ytdlp():
         input("\nPress Enter to exit...")
         sys.exit(1)
 
-    # Step 2: Download all videos
-    download_all_videos()
+    # Step 2: Check ffmpeg (needed to merge video + audio into single MP4)
+    ffmpeg_path = check_ffmpeg()
+
+    # Step 3: Download all videos
+    download_all_videos(ffmpeg_path=ffmpeg_path)

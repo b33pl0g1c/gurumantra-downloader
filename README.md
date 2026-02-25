@@ -70,6 +70,12 @@ In a folder called **`downloads`** inside the same folder where you ran the scri
 ### I see "yt-dlp is NOT installed" message. What do I do?
 **Nothing!** The script will automatically install yt-dlp for you. Just wait a moment.
 
+### I see "ffmpeg is NOT installed" message. What do I do?
+**Nothing!** The script will automatically install ffmpeg for you. If it can't install ffmpeg, it will still download videos at 720p quality (which is perfectly fine for these class videos).
+
+### The downloaded video has no audio / has separate audio and video files
+This happens when ffmpeg is missing. **Just run the script again** — the latest version automatically installs ffmpeg and downloads videos correctly as a single MP4 file with audio included.
+
 ### The window shows red/error text. What went wrong?
 Some videos might fail due to temporary internet issues. **Just run the script again** — it will automatically retry the failed ones and skip the successful ones.
 
